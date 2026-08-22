@@ -538,32 +538,46 @@ class GameFilesManager {
 			setPatchMain("fluxloader:electron-globalize-settings-calls", "loadSettingsSync()", "globalThis.gameElectronFuncs.loadSettingsSync()");
 
 			// Block the automatic app listeners so we control when things happen
-			setPatchMain("fluxloader:electron-block-execution-1", "app.whenReady().then(() => {", "var _ = (() => {");
+			// (the game's whenReady callback is `async` as of the full release - preserve that)
+			setPatchMain("fluxloader:electron-block-execution-1", "app.whenReady().then(async () => {", "var _ = (async () => {");
 			setPatchMain("fluxloader:electron-block-execution-2", "app.on('window-all-closed', function () {", "var _ = (() => {");
 
 			// Ensure that the app thinks it is still running inside the app.asar
-			// - Fix the userData path to be 'sandustrydemo' instead of 'sandustry-fluxloader'
+			// - Fix the userData path to be 'sandustry' instead of 'sandustry-fluxloader'
+			//   (matches the real game's package.json name, so modded saves land in the
+			//   same folder the unmodded game already uses)
 			// - Override relative "preload.js" to absolute
 			// - Override relative "index.html" to absolute
-			setPatchMain("fluxloader:electron-fix-paths-1", 'getPath("userData")', 'getPath("userData").replace("sandustry-fluxloader", "sandustrydemo")', 3);
+			// (the full release only calls getPath("userData") twice, was 3 in the demo build)
+			setPatchMain("fluxloader:electron-fix-paths-1", 'getPath("userData")', 'getPath("userData").replace("sandustry-fluxloader", "sandustry")', 2);
 			setPatchMain("fluxloader:electron-fix-paths-2", "path.join(__dirname, 'preload.js')", `'${path.join(this.tempExtractedPath, "preload.js").replaceAll("\\", "/")}'`);
-			setPatchMain("fluxloader:electron-fix-paths-3", "loadFile('index.html')", `loadFile('${path.join(this.tempExtractedPath, "index.html").replaceAll("\\", "/")}')`);
+			// The full release computes the index.html path via a packaged/dev ternary instead of a
+			// direct loadFile('index.html') call - replace the whole computation with our absolute path.
+			setPatchMain(
+				"fluxloader:electron-fix-paths-3",
+				"const distIndex = app.isPackaged\r\n    ? path.join(__dirname, 'dist', 'index.html')\r\n    : path.join(__dirname, '..', 'dist', 'index.html');",
+				`const distIndex = '${path.join(this.tempExtractedPath, "dist", "index.html").replaceAll("\\", "/")}';`,
+			);
 
 			// Expose the games main window to be global
-			setPatchMain("fluxloader:electron-globalize-window", "const mainWindow", "globalThis.gameWindow", 1);
-			setPatchMain("fluxloader:electron-globalize-window-calls", "mainWindow", "globalThis.gameWindow", 4);
+			// (the full release declares this with `let`, not `const`)
+			setPatchMain("fluxloader:electron-globalize-window", "let mainWindow", "globalThis.gameWindow", 1);
+			setPatchMain("fluxloader:electron-globalize-window-calls", "mainWindow", "globalThis.gameWindow", 45);
 
 			// Make the menu bar visible
 			// replaceAllMain("autoHideMenuBar: true,", "autoHideMenuBar: false,");
 
 			// We're also gonna expose the ipcMain in preload.js
+			// (the full release also exposes an unrelated custom-map "save" method, so match the
+			// full original line - including its ipcRenderer.invoke('save', ...) call - to target
+			// only the intended one)
 			setPatchPreload(
 				"fluxloader:exposeIPC",
-				"save: (id, name, data)",
+				"save: (id, name, data) => ipcRenderer.invoke('save', { id, name, data }),",
 				`invoke: (msg, ...args) => ipcRenderer.invoke(msg, ...args),
 				handle: (msg, func) => ipcRenderer.handle(msg, func),
 				on: (msg, func) => ipcRenderer.on(msg, func),
-				save: (id, name, data)`,
+				save: (id, name, data) => ipcRenderer.invoke('save', { id, name, data }),`,
 			);
 
 			// Hook into the debugger
@@ -734,9 +748,17 @@ class GameFilesManager {
 		if (this.fileData[file]) throw new Error(`File already initialized: ${file}`);
 
 		logDebug(`Initializing file data: ${file}`);
-		const fullPath = path.join(this.tempExtractedPath, file);
+		let fullPath = path.join(this.tempExtractedPath, file);
 		if (!fs.existsSync(fullPath)) {
-			throw new Error(`File not found: ${fullPath}`);
+			// The full release nests renderer assets (js/, css/, etc.) under a "dist" folder that
+			// didn't exist in the old demo build - fall back to it transparently so patch tags like
+			// "js/bundle.js" keep working unchanged for fluxloader core, corelib, and mods.
+			const distPath = path.join(this.tempExtractedPath, "dist", file);
+			if (fs.existsSync(distPath)) {
+				fullPath = distPath;
+			} else {
+				throw new Error(`File not found: ${fullPath}`);
+			}
 		}
 		this.fileData[file] = { fullPath, isModified: false, usingLatestPatches: false, patches: new Map() };
 	}
@@ -764,7 +786,11 @@ class GameFilesManager {
 			fs.rmSync(fullPath);
 
 			// Copy the original from the asar
-			const asarFilePath = path.join(this.gameAsarPath, file);
+			let asarFilePath = path.join(this.gameAsarPath, file);
+			if (!fs.existsSync(asarFilePath)) {
+				const distAsarFilePath = path.join(this.gameAsarPath, "dist", file);
+				if (fs.existsSync(distAsarFilePath)) asarFilePath = distAsarFilePath;
+			}
 			logDebug(`Copying original file from asar: ${asarFilePath} to ${fullPath}`);
 			fs.copyFileSync(asarFilePath, fullPath);
 		} catch (e) {
@@ -1906,19 +1932,27 @@ function findValidGamePath() {
 	function findGameAsarInDirectory(dir) {
 		if (!fs.existsSync(dir)) return null;
 
-		let foundAny = false;
-		for (let name of ["sandustrydemo", "sandustrydemo.exe"]) {
-			try {
-				const gamePath = path.join(dir, name);
-				if (fs.existsSync(gamePath)) {
-					foundAny = true;
-					break;
-				}
-			} catch (e) {}
+		let searchDir = dir;
+		if (fs.statSync(dir).isFile()) {
+			// `dir` may be a full path to the game executable (e.g. picked via a file
+			// dialog) rather than its containing folder - if so we already know a
+			// valid executable exists here, so just use its containing folder.
+			searchDir = path.dirname(dir);
+		} else {
+			let foundAny = false;
+			for (let name of ["sandustrydemo", "sandustrydemo.exe", "sandustry", "sandustry.exe"]) {
+				try {
+					const gamePath = path.join(dir, name);
+					if (fs.existsSync(gamePath)) {
+						foundAny = true;
+						break;
+					}
+				} catch (e) {}
+			}
+			if (!foundAny) return null;
 		}
-		if (!foundAny) return null;
 
-		const asarPath = path.join(dir, "resources", "app.asar");
+		const asarPath = path.join(searchDir, "resources", "app.asar");
 		if (!fs.existsSync(asarPath)) return null;
 
 		return asarPath;
@@ -1936,9 +1970,12 @@ function findValidGamePath() {
 			logDebug("Checking default steam directories...");
 
 			const checkPaths = {
-				windows: [process.env["ProgramFiles(x86)"], "Steam", "steamapps", "common", "Sandustry Demo"],
-				linux: [process.env.HOME, ".local", "share", "Steam", "steamapps", "common", "Sandustry Demo"],
-				mac: [process.env.HOME, "Library", "Application Support", "Steam", "steamapps", "common", "Sandustry Demo"],
+				"windows-full": [process.env["ProgramFiles(x86)"], "Steam", "steamapps", "common", "Sandustry"],
+				"windows-demo": [process.env["ProgramFiles(x86)"], "Steam", "steamapps", "common", "Sandustry Demo"],
+				"linux-full": [process.env.HOME, ".local", "share", "Steam", "steamapps", "common", "Sandustry"],
+				"linux-demo": [process.env.HOME, ".local", "share", "Steam", "steamapps", "common", "Sandustry Demo"],
+				"mac-full": [process.env.HOME, "Library", "Application Support", "Steam", "steamapps", "common", "Sandustry"],
+				"mac-demo": [process.env.HOME, "Library", "Application Support", "Steam", "steamapps", "common", "Sandustry Demo"],
 			};
 
 			// Look in the default steam directory for the games app.asar
@@ -2239,7 +2276,11 @@ globalThis.attachDebuggerToGameWindow = function (window) {
 				const tempExtractedPath = gameFilesManager.tempExtractedPath.replaceAll("\\", "/");
 				await fluxloaderAPI.events.trigger("fl:file-requested", filePath, false);
 				if (filePath.startsWith(tempExtractedPath)) {
-					const relativePath = filePath.replace(tempExtractedPath + "/", "");
+					let relativePath = filePath.replace(tempExtractedPath + "/", "");
+					// The full release nests renderer assets under a "dist" folder that didn't
+					// exist in the old demo build - normalize it away so the checks below (and
+					// gameFilesManager's patch tags, e.g. "js/bundle.js") keep working unchanged.
+					if (relativePath.startsWith("dist/")) relativePath = relativePath.slice("dist/".length);
 					if (relativePath === "index.html") {
 						let queryParams = request.url.split("?");
 						// Make sure query params do exist
