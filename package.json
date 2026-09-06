@@ -4,13 +4,13 @@
 		"name": "Fluxloader Team",
 		"email": "thomas.burniston@gmail.com"
 	},
-	"homepage": "https://git.rendezvous.dev/sandustry/modloader",
+	"homepage": "https://github.com/adamspicedev/fluxloader",
 	"repository": {
 		"type": "git",
-		"url": "https://git.rendezvous.dev/sandustry/modloader.git"
+		"url": "https://github.com/adamspicedev/fluxloader.git"
 	},
 	"description": "A cross-platform modloader for Sandustry",
-	"version": "2.5.5",
+	"version": "2.5.6",
 	"main": "src/electron.js",
 	"type": "module",
 	"scripts": {

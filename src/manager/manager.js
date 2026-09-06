@@ -8,7 +8,7 @@ globalThis.semver = api.semver;
 
 const DELAY_LOAD_REMOTE_MS = 150;
 const DELAY_RELOAD_MS = 150;
-const FLUXLOADER_RELEASES_URL = "https://api.github.com/repos/fluxloader-team/fluxloader/releases";
+const FLUXLOADER_RELEASES_URL = "https://api.github.com/repos/adamspicedev/fluxloader/releases";
 
 /**
  * @type {{
