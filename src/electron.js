@@ -44,7 +44,7 @@ globalThis.semver = semver;
 /** @type {GameWindow} */ globalThis.gameWindow = undefined;
 /** @type {ElectronFluxloaderAPI} */ globalThis.fluxloaderAPI = undefined;
 
-const SITE_URL = "http://fluxloader.app";
+const SITE_URL = "https://fluxloader.app";
 const LOG_LEVELS = ["debug", "info", "warn", "error"];
 const PRE_CONFIG_LOG_LEVEL = "debug";
 
