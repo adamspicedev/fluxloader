@@ -549,7 +549,7 @@ class GameFilesManager {
 			// - Override relative "preload.js" to absolute
 			// - Override relative "index.html" to absolute
 			// (the full release only calls getPath("userData") twice, was 3 in the demo build)
-			setPatchMain("fluxloader:electron-fix-paths-1", 'getPath("userData")', 'getPath("userData").replace("sandustry-fluxloader", "sandustry")', 2);
+			setPatchMain("fluxloader:electron-fix-paths-1", 'getPath("userData")', 'getPath("userData").replace("sandustry-fluxloader", "sandustry")', [1, 2]);
 			setPatchMain("fluxloader:electron-fix-paths-2", "path.join(__dirname, 'preload.js')", `'${path.join(this.tempExtractedPath, "preload.js").replaceAll("\\", "/")}'`);
 			// The full release computes the index.html path via a packaged/dev ternary instead of a
 			// direct loadFile('index.html') call - replace the whole computation with our absolute path.
@@ -899,9 +899,10 @@ class GameFilesManager {
 					searchIndex = index + patch.from.length;
 				}
 				let expectedMatches = patch.expectedMatches || 1;
-				if (expectedMatches > 0) {
-					if (actualMatches != expectedMatches) {
-						throw new Error(`Failed to apply replace patch: "${patch.from}" -> "${patch.to}", ${actualMatches} != ${expectedMatches} match(s).`);
+				if (expectedMatches > 0 || Array.isArray(expectedMatches)) {
+					const matches = Array.isArray(expectedMatches) ? expectedMatches : [expectedMatches];
+					if (!matches.includes(actualMatches)) {
+						throw new Error(`Failed to apply replace patch: "${patch.from}" -> "${patch.to}", ${actualMatches} != ${matches.join(" or ")} match(s).`);
 					}
 				}
 				if (actualMatches > 0) {
