@@ -48,6 +48,16 @@ const SITE_URL = "https://fluxloader.app";
 const LOG_LEVELS = ["debug", "info", "warn", "error"];
 const PRE_CONFIG_LOG_LEVEL = "debug";
 
+// Sandustry registers this privileged scheme at module load. Fluxloader evaluates
+// the patched game main process after Electron is ready, so register it during our
+// own startup instead and remove the game's duplicate registration below.
+protocol.registerSchemesAsPrivileged([
+	{
+		scheme: "sandustry-patch",
+		privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+	},
+]);
+
 let configPath = "fluxloader-config.json";
 let configSchemaPath = "schema.fluxloader-config.json";
 let modInfoSchemaPath = "schema.mod-info.json";
@@ -562,6 +572,7 @@ class GameFilesManager {
 				"const distIndex\\s*=\\s*app\\.isPackaged[\\s\\S]*?path\\.join\\(__dirname,\\s*['\"]\\.\\.['\"],\\s*['\"]dist['\"],\\s*['\"]index\\.html['\"]\\s*\\);",
 				`const distIndex = '${path.join(this.tempExtractedPath, "dist", "index.html").replaceAll("\\", "/")}';`,
 			);
+			setPatchMainRegex("fluxloader:electron-register-scheme", "if\\s*\\(PLATFORM_NAME\\s*===\\s*['\"]steam['\"]\\)\\s*\\{\\s*protocol\\.registerSchemesAsPrivileged\\(\\[[\\s\\S]*?\\]\\)\\s*\\}", "");
 
 			// Expose the games main window to be global
 			// (the full release declares this with `let`, not `const`)
