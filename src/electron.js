@@ -38,7 +38,7 @@ import Module from "module";
 
 // =================== VARIABLES ===================
 
-globalThis.fluxloaderVersion = "2.5.5";
+globalThis.fluxloaderVersion = "2.5.6";
 globalThis.gameElectronFuncs = undefined;
 globalThis.semver = semver;
 /** @type {GameWindow} */ globalThis.gameWindow = undefined;
@@ -1932,30 +1932,24 @@ function findValidGamePath() {
 	function findGameAsarInDirectory(dir) {
 		if (!fs.existsSync(dir)) return null;
 
-		let searchDir = dir;
-		if (fs.statSync(dir).isFile()) {
-			// `dir` may be a full path to the game executable (e.g. picked via a file
-			// dialog) rather than its containing folder - if so we already know a
-			// valid executable exists here, so just use its containing folder.
-			searchDir = path.dirname(dir);
+		const stat = fs.statSync(dir);
+		const candidates = [];
+		if (stat.isFile()) {
+			// A file picker may return app.asar or the game executable itself.
+			candidates.push(dir, path.join(path.dirname(dir), "resources", "app.asar"));
 		} else {
-			let foundAny = false;
-			for (let name of ["sandustrydemo", "sandustrydemo.exe", "sandustry", "sandustry.exe"]) {
-				try {
-					const gamePath = path.join(dir, name);
-					if (fs.existsSync(gamePath)) {
-						foundAny = true;
-						break;
-					}
-				} catch (e) {}
-			}
-			if (!foundAny) return null;
+			// Accept the resources directory directly, the normal game directory, and
+			// the macOS .app bundle layout used by the Steam release.
+			candidates.push(
+				path.join(dir, "app.asar"),
+				path.join(dir, "resources", "app.asar"),
+				path.join(dir, "Contents", "Resources", "app.asar"),
+				path.join(dir, "Sandustry.app", "Contents", "Resources", "app.asar"),
+				path.join(dir, "Sandustry Demo.app", "Contents", "Resources", "app.asar"),
+			);
 		}
 
-		const asarPath = path.join(searchDir, "resources", "app.asar");
-		if (!fs.existsSync(asarPath)) return null;
-
-		return asarPath;
+		return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 	}
 
 	// Look in the configured directory for the games app.asar
