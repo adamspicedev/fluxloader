@@ -566,7 +566,7 @@ class GameFilesManager {
 			// Expose the games main window to be global
 			// (the full release declares this with `let`, not `const`)
 			setPatchMain("fluxloader:electron-globalize-window", "let mainWindow", "globalThis.gameWindow", 1);
-			setPatchMain("fluxloader:electron-globalize-window-calls", "mainWindow", "globalThis.gameWindow", 45);
+			setPatchMain("fluxloader:electron-globalize-window-calls", "mainWindow", "globalThis.gameWindow", [44, 45]);
 
 			// Make the menu bar visible
 			// replaceAllMain("autoHideMenuBar: true,", "autoHideMenuBar: false,");
