@@ -526,6 +526,10 @@ class GameFilesManager {
 				const res = gameFilesManager.setPatch("main.js", tag, { type: "replace", from, to, expectedMatches: matches });
 				if (!res.success) throw new Error(`Failed to set patch for main.js: ${res.message}`);
 			};
+			const setPatchMainRegex = (tag, pattern, replace, matches = 1) => {
+				const res = gameFilesManager.setPatch("main.js", tag, { type: "regex", pattern, replace, expectedMatches: matches });
+				if (!res.success) throw new Error(`Failed to set patch for main.js: ${res.message}`);
+			};
 			const setPatchPreload = (tag, from, to, matches = 1) => {
 				const res = gameFilesManager.setPatch("preload.js", tag, { type: "replace", from, to, expectedMatches: matches });
 				if (!res.success) throw new Error(`Failed to set patch for main.js: ${res.message}`);
@@ -553,9 +557,9 @@ class GameFilesManager {
 			setPatchMain("fluxloader:electron-fix-paths-2", "path.join(__dirname, 'preload.js')", `'${path.join(this.tempExtractedPath, "preload.js").replaceAll("\\", "/")}'`);
 			// The full release computes the index.html path via a packaged/dev ternary instead of a
 			// direct loadFile('index.html') call - replace the whole computation with our absolute path.
-			setPatchMain(
+			setPatchMainRegex(
 				"fluxloader:electron-fix-paths-3",
-				"const distIndex = app.isPackaged\r\n    ? path.join(__dirname, 'dist', 'index.html')\r\n    : path.join(__dirname, '..', 'dist', 'index.html');",
+				"const distIndex\\s*=\\s*app\\.isPackaged[\\s\\S]*?path\\.join\\(__dirname,\\s*['\"]\\.\\.['\"],\\s*['\"]dist['\"],\\s*['\"]index\\.html['\"]\\s*\\);",
 				`const distIndex = '${path.join(this.tempExtractedPath, "dist", "index.html").replaceAll("\\", "/")}';`,
 			);
 
