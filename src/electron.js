@@ -2086,7 +2086,14 @@ function addFluxloaderPatches() {
 			}),
 		);
 
-		const workers = ["546", "336"];
+		const workers = ["546", "336"].filter((worker) => {
+			const file = `js/${worker}.bundle.js`;
+			const directPath = path.join(gameFilesManager.tempExtractedPath, file);
+			const distPath = path.join(gameFilesManager.tempExtractedPath, "dist", file);
+			if (fs.existsSync(directPath) || fs.existsSync(distPath)) return true;
+			logDebug(`Skipping legacy worker patches because '${file}' is not present in this game build`);
+			return false;
+		});
 		for (const worker of workers) {
 			// Listen for fluxloader worker messages in each worker
 			responseAsError(
@@ -2130,40 +2137,44 @@ function addFluxloaderPatches() {
 		}
 
 		// Process the queue messages
-		responseAsError(
-			gameFilesManager.setPatch(`js/336.bundle.js`, "fluxloader:processQueuedMessages", {
-				type: "replace",
-				from: `W.store.upgrades[ee][te].level=re}}`,
-				to: `$$;if (preloadMessageQueue){for (const msg of preloadMessageQueue) self.onmessage(msg);}preloadMessageQueue=undefined;`,
-				token: "$$",
-			}),
-		);
-		responseAsError(
-			gameFilesManager.setPatch(`js/546.bundle.js`, "fluxloader:processQueuedMessages", {
-				type: "replace",
-				from: `a.session.paused=e.data[1]}};`,
-				to: `$$if (preloadMessageQueue){for (const msg of preloadMessageQueue) {self.onmessage(msg);}}preloadMessageQueue=undefined;`,
-				token: "$$",
-			}),
-		);
+		if (workers.includes("336"))
+			responseAsError(
+				gameFilesManager.setPatch(`js/336.bundle.js`, "fluxloader:processQueuedMessages", {
+					type: "replace",
+					from: `W.store.upgrades[ee][te].level=re}}`,
+					to: `$$;if (preloadMessageQueue){for (const msg of preloadMessageQueue) self.onmessage(msg);}preloadMessageQueue=undefined;`,
+					token: "$$",
+				}),
+			);
+		if (workers.includes("546"))
+			responseAsError(
+				gameFilesManager.setPatch(`js/546.bundle.js`, "fluxloader:processQueuedMessages", {
+					type: "replace",
+					from: `a.session.paused=e.data[1]}};`,
+					to: `$$if (preloadMessageQueue){for (const msg of preloadMessageQueue) {self.onmessage(msg);}}preloadMessageQueue=undefined;`,
+					token: "$$",
+				}),
+			);
 
 		// Notify worker.js when the workers are ready
 		// These are different for each worker
-		responseAsError(
-			gameFilesManager.setPatch(`js/336.bundle.js`, "fluxloader:workerInitialized", {
-				type: "replace",
-				from: `W.environment.postMessage([i.dD.InitFinished]);`,
-				to: `fluxloaderOnWorkerInitialized(W);$$`,
-				token: "$$",
-			}),
-		);
-		responseAsError(
-			gameFilesManager.setPatch(`js/546.bundle.js`, "fluxloader:workerInitialized2", {
-				type: "replace",
-				from: `t(performance.now());break;`,
-				to: `t(performance.now());fluxloaderOnWorkerInitialized(a);break;`,
-			}),
-		);
+		if (workers.includes("336"))
+			responseAsError(
+				gameFilesManager.setPatch(`js/336.bundle.js`, "fluxloader:workerInitialized", {
+					type: "replace",
+					from: `W.environment.postMessage([i.dD.InitFinished]);`,
+					to: `fluxloaderOnWorkerInitialized(W);$$`,
+					token: "$$",
+				}),
+			);
+		if (workers.includes("546"))
+			responseAsError(
+				gameFilesManager.setPatch(`js/546.bundle.js`, "fluxloader:workerInitialized2", {
+					type: "replace",
+					from: `t(performance.now());break;`,
+					to: `t(performance.now());fluxloaderOnWorkerInitialized(a);break;`,
+				}),
+			);
 
 		// Add React to globalThis
 		responseAsError(
